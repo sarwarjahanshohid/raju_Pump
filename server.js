@@ -10,7 +10,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 
 // --- Configuration ---
-const MONGODB_URI = 'mongodb+srv://atifsupermart202199:FGzi4j6kRnYTIyP9@cluster0.bfulggv.mongodb.net/?retryWrites=true&w=majority'; // আপনার MongoDB Atlas URI দিন
+const MONGODB_URI = 'mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/iot_controller?retryWrites=true&w=majority'; // আপনার MongoDB Atlas URI দিন
 const PORT = process.env.PORT || 3000;
 
 // --- Database Connection ---
@@ -97,8 +97,8 @@ app.get('/api/latest-status', async (req, res) => {
         const status = await DeviceStatus.findOne({ deviceId: 'esp32-motor-1' }).sort({ createdAt: -1 });
         res.json(status);
     } catch (err) {
-        res.status(500).send('Error     dd fetching status');
-    }  
+        res.status(500).send('Error fetching status');
+    }
 });
 
 // --- Start Server ---
