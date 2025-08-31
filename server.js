@@ -67,7 +67,7 @@ wss.on('connection', (ws) => {
                     client.send(message.toString());
                 }
             });
-        }
+        } 
     });
 
     ws.on('close', () => {
