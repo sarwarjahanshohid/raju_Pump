@@ -16,7 +16,6 @@ const webClients = new Set();
 wss.on('connection', (ws) => {
     console.log('A client connected. Waiting for identification...');
 
-    // A flag to check if the client has been identified
     ws.isIdentified = false;
 
     const identificationTimeout = setTimeout(() => {
@@ -24,11 +23,10 @@ wss.on('connection', (ws) => {
             console.log('Client did not identify. Assuming it is a web client.');
             webClients.add(ws);
             ws.isIdentified = true;
-            // Send the current ESP32 status to the new web client
             const espStatus = (esp32Client && esp32Client.readyState === WebSocket.OPEN) ? 'online' : 'offline';
             ws.send(JSON.stringify({ type: 'espStatus', status: espStatus }));
         }
-    }, 2000); // Wait 2 seconds for identification
+    }, 2000);
 
     ws.on('message', (message) => {
         let data;
@@ -45,7 +43,6 @@ wss.on('connection', (ws) => {
             esp32Client = ws;
             ws.isIdentified = true;
             
-            // Notify all web clients that the ESP32 is now online
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'online' }));
@@ -53,21 +50,17 @@ wss.on('connection', (ws) => {
             });
 
         } else if (data.type === 'command' && ws !== esp32Client) {
-            // Forward command from a web client to the ESP32
             if (esp32Client && esp32Client.readyState === WebSocket.OPEN) {
                 console.log('Forwarding command to ESP32:', message.toString());
                 esp32Client.send(message.toString());
-            } else {
-                 console.log('Command received, but ESP32 is not connected.');
             }
-        } else if (data.type === 'statusUpdate' && ws === esp32Client) {
-            // Forward status from ESP32 to all web clients
+        } else if ((data.type === 'statusUpdate' || data.type === 'allLogsUpdate' || data.type === 'logPageUpdate') && ws === esp32Client) {
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(message.toString());
                 }
             });
-        } 
+        }
     });
 
     ws.on('close', () => {
@@ -75,7 +68,6 @@ wss.on('connection', (ws) => {
         if (ws === esp32Client) {
             console.log('ESP32 client disconnected.');
             esp32Client = null;
-            // Notify all web clients that the ESP32 is now offline
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'offline' }));
