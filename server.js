@@ -6,71 +6,76 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// আপনার HTML ড্যাশবোর্ডটি দেখানোর জন্য
 app.use(express.static(path.join(__dirname, 'public')));
 
-const wss = new WebSocket.Server({ 
-    server,
-    // যেকোনো ডোমেইন থেকে কানেকশন গ্রহণ করার জন্য
-    verifyClient: (info, callback) => {
-        callback(true);
-    }
-});
+const wss = new WebSocket.Server({ server });
 
 let esp32Client = null;
-let webClients = new Set();
+const webClients = new Set();
 
 wss.on('connection', (ws) => {
-    console.log('Client connected');
+    console.log('A client connected. Waiting for identification...');
+
+    // A flag to check if the client has been identified
+    ws.isIdentified = false;
+
+    const identificationTimeout = setTimeout(() => {
+        if (!ws.isIdentified) {
+            console.log('Client did not identify. Assuming it is a web client.');
+            webClients.add(ws);
+            ws.isIdentified = true;
+            // Send the current ESP32 status to the new web client
+            const espStatus = (esp32Client && esp32Client.readyState === WebSocket.OPEN) ? 'online' : 'offline';
+            ws.send(JSON.stringify({ type: 'espStatus', status: espStatus }));
+        }
+    }, 2000); // Wait 2 seconds for identification
 
     ws.on('message', (message) => {
         let data;
         try {
             data = JSON.parse(message);
         } catch (e) {
-            console.error('Invalid JSON received:', message);
+            console.error('Invalid JSON received:', message.toString());
             return;
         }
 
-        // ক্লায়েন্টটি ESP32 নাকি ওয়েব ড্যাশবোর্ড, তা শনাক্ত করা
-        if (data.type === 'esp32-identify') {
-            console.log('ESP32 identified and connected.');
+        if (data.type === 'esp32-identify' && !ws.isIdentified) {
+            clearTimeout(identificationTimeout);
+            console.log('ESP32 client identified.');
             esp32Client = ws;
-            // সকল ওয়েব ক্লায়েন্টকে জানানো যে ESP32 অনলাইন হয়েছে
+            ws.isIdentified = true;
+            
+            // Notify all web clients that the ESP32 is now online
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'online' }));
                 }
             });
-        } else if (data.type === 'command' && esp32Client && esp32Client.readyState === WebSocket.OPEN) {
-            // ওয়েব ক্লায়েন্ট থেকে আসা কমান্ড ESP32-কে পাঠানো
-            console.log('Forwarding command to ESP32:', message.toString());
-            esp32Client.send(message.toString());
-        } else if (data.type === 'statusUpdate') {
-            // ESP32 থেকে আসা স্ট্যাটাস সকল ওয়েব ক্লায়েন্টকে পাঠানো
+
+        } else if (data.type === 'command' && ws !== esp32Client) {
+            // Forward command from a web client to the ESP32
+            if (esp32Client && esp32Client.readyState === WebSocket.OPEN) {
+                console.log('Forwarding command to ESP32:', message.toString());
+                esp32Client.send(message.toString());
+            } else {
+                 console.log('Command received, but ESP32 is not connected.');
+            }
+        } else if (data.type === 'statusUpdate' && ws === esp32Client) {
+            // Forward status from ESP32 to all web clients
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(message.toString());
                 }
             });
-        } else {
-            // এটি একটি ওয়েব ক্লায়েন্ট হিসেবে ধরে নেওয়া
-            if (!webClients.has(ws) && ws !== esp32Client) {
-                 console.log('Web client registered.');
-                 webClients.add(ws);
-                 // নতুন ওয়েব ক্লায়েন্টকে সাথে সাথেই ESP32-এর স্ট্যাটাস পাঠানো
-                 const espStatus = (esp32Client && esp32Client.readyState === WebSocket.OPEN) ? 'online' : 'offline';
-                 ws.send(JSON.stringify({ type: 'espStatus', status: espStatus }));
-            }
         }
     });
 
     ws.on('close', () => {
-        console.log('Client disconnected');
+        clearTimeout(identificationTimeout);
         if (ws === esp32Client) {
-            console.log('ESP32 has disconnected.');
+            console.log('ESP32 client disconnected.');
             esp32Client = null;
-            // সকল ওয়েব ক্লায়েন্টকে জানানো যে ESP32 অফলাইন হয়েছে
+            // Notify all web clients that the ESP32 is now offline
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'offline' }));
