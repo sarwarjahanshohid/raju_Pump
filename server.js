@@ -6,12 +6,12 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Serve the static HTML dashboard
+// আপনার HTML ড্যাশবোর্ডটি দেখানোর জন্য
 app.use(express.static(path.join(__dirname, 'public')));
 
 const wss = new WebSocket.Server({ 
     server,
-    // ** FIX: This allows connections from any origin/domain **
+    // যেকোনো ডোমেইন থেকে কানেকশন গ্রহণ করার জন্য
     verifyClient: (info, callback) => {
         callback(true);
     }
@@ -32,41 +32,33 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Identify if the client is an ESP32 or a web dashboard
+        // ক্লায়েন্টটি ESP32 নাকি ওয়েব ড্যাশবোর্ড, তা শনাক্ত করা
         if (data.type === 'esp32-identify') {
             console.log('ESP32 identified and connected.');
             esp32Client = ws;
-            // Notify all web clients that ESP32 is online
+            // সকল ওয়েব ক্লায়েন্টকে জানানো যে ESP32 অনলাইন হয়েছে
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'online' }));
                 }
             });
         } else if (data.type === 'command' && esp32Client && esp32Client.readyState === WebSocket.OPEN) {
-            // Forward command from web client to ESP32
+            // ওয়েব ক্লায়েন্ট থেকে আসা কমান্ড ESP32-কে পাঠানো
             console.log('Forwarding command to ESP32:', message.toString());
             esp32Client.send(message.toString());
         } else if (data.type === 'statusUpdate') {
-            // Forward status from ESP32 to all web clients
+            // ESP32 থেকে আসা স্ট্যাটাস সকল ওয়েব ক্লায়েন্টকে পাঠানো
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(message.toString());
                 }
             });
-        } else if (data.type === 'gsmFeedback') {
-             // Forward GSM feedback from ESP32 to all web clients
-             webClients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(message.toString());
-                }
-            });
-        }
-         else {
-            // Assume it's a web client
+        } else {
+            // এটি একটি ওয়েব ক্লায়েন্ট হিসেবে ধরে নেওয়া
             if (!webClients.has(ws) && ws !== esp32Client) {
                  console.log('Web client registered.');
                  webClients.add(ws);
-                 // Immediately send ESP status to the new web client
+                 // নতুন ওয়েব ক্লায়েন্টকে সাথে সাথেই ESP32-এর স্ট্যাটাস পাঠানো
                  const espStatus = (esp32Client && esp32Client.readyState === WebSocket.OPEN) ? 'online' : 'offline';
                  ws.send(JSON.stringify({ type: 'espStatus', status: espStatus }));
             }
@@ -78,7 +70,7 @@ wss.on('connection', (ws) => {
         if (ws === esp32Client) {
             console.log('ESP32 has disconnected.');
             esp32Client = null;
-            // Notify all web clients that ESP32 is offline
+            // সকল ওয়েব ক্লায়েন্টকে জানানো যে ESP32 অফলাইন হয়েছে
             webClients.forEach(client => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({ type: 'espStatus', status: 'offline' }));
@@ -99,3 +91,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
 });
+
